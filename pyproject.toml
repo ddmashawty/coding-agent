@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent0"
+version = "0.1.0"
+description = "Minimal terminal coding agent"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+]
+
+[project.scripts]
+agent0 = "agent0.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent0"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src/agent0" = "agent0"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]

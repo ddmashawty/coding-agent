@@ -1,0 +1,11 @@
+.agent/
+runs/
+.venv/
+.env
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+.ruff_cache/
+dist/
+*.egg-info/

@@ -1,0 +1,94 @@
+{
+  "drop_tool_calls": {
+    "http": 200,
+    "body": {
+      "id": "de070119-01e8-4a03-bc91-79d808ca7212",
+      "object": "chat.completion",
+      "created": 1792943752,
+      "model": "deepseek-flash",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "",
+            "reasoning_content": "The user is saying the previous response was truncated. I need to call the read tool on probe.txt.",
+            "tool_calls": [
+              {
+                "index": 0,
+                "id": "call_00_rYB6URnChcc8FziVkzfA0640",
+                "type": "function",
+                "function": {
+                  "name": "read",
+                  "arguments": "{\"path\": \"probe.txt\"}"
+                }
+              }
+            ]
+          },
+          "logprobs": null,
+          "finish_reason": "tool_calls"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 336,
+        "completion_tokens": 60,
+        "total_tokens": 396,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 21
+        },
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 208
+      },
+      "system_fingerprint": "e72d3c7f663d3e1383b00b3884cb4501"
+    }
+  },
+  "keep_tool_calls_with_error_result": {
+    "http": 200,
+    "body": {
+      "id": "7b5bef50-4fe7-4721-905a-798dc160a84d",
+      "object": "chat.completion",
+      "created": 1792943753,
+      "model": "deepseek-flash",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "",
+            "reasoning_content": "The tool call errored — it says previous model response was truncated and tool calls weren't executed. I should retry the read call.",
+            "tool_calls": [
+              {
+                "index": 0,
+                "id": "call_00_fgS1njarwiVz67IJDbLs6641",
+                "type": "function",
+                "function": {
+                  "name": "read",
+                  "arguments": "{\"path\": \"probe.txt\"}"
+                }
+              }
+            ]
+          },
+          "logprobs": null,
+          "finish_reason": "tool_calls"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 381,
+        "completion_tokens": 67,
+        "total_tokens": 448,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 28
+        },
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 253
+      },
+      "system_fingerprint": "e72d3c7f663d3e1383b00b3884cb4501"
+    }
+  }
+}

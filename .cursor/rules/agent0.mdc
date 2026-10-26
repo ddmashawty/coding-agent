@@ -1,0 +1,59 @@
+---
+description: agent0 v0 核心任务、硬约束、架构、不变量与工作方式
+alwaysApply: true
+---
+
+# agent0
+
+一次只做一个里程碑。先列文件和测试，等确认再动手。需求之外的想法写进 NOTES.md，不要实现。不确定就问，不要猜。
+
+## 任务
+
+在 WSL 上用 Python 实现极简终端 coding agent（代号 agent0）。平时只追加上下文，到达硬线时用「状态文件 + 最近几轮」一次性重建上下文，原文始终留在磁盘上可恢复。结构借鉴 Pi 的 agent loop，不借鉴其扩展系统、skills、主题和包生态。稳定、可恢复、日志完整，比功能多更重要。
+
+## 硬约束
+
+- Python 3.11+，用 uv 管理依赖。新增任何依赖前先问。
+- 模型 DeepSeek-V4.1-Flash-1017，OpenAI 兼容接口，窗口 1M。模型名、base_url、api key 从配置文件和环境变量读取，不要写死。provider 抽象成接口，v0 只实现 DeepSeek。
+- 工具只有 read、write、edit、bash，另有只在 headless 使用的 submit。不要加搜索、MCP、子 agent、skills、插件、plan 或 todo 工具。
+- 工具串行执行：按模型给出的顺序，一个完成再做下一个。
+- system prompt 自己写，目标不超过 1000 token，不要抄别家长提示词。
+- DeepSeek 接口细节必须对照官方文档：工具调用格式、finish_reason、usage 里缓存命中/未命中字段名。解析必须保留原始 usage 字段。流式请求要设 `stream_options.include_usage`，并处理结尾单独的 usage 块（以及 usage 附在最后内容块上的情况）。
+- DeepSeek V4 默认开思考模式。带 `tools` 的请求必须把历史助手消息的 `reasoning_content` 原样回传，否则 400。
+- 先写 `scripts/probe_deepseek.py`，分别打印流式和非流式（含工具调用）的原始响应，脱敏后存成夹具；解析测试只用这些夹具，不用凭文档想象的 JSON。
+- API key 从 `DEEPSEEK_API_KEY` 读取。`.env` 进 `.gitignore`。key 不得出现在会话 JSONL、事件、遥测和日志里。
+- 终端界面用 prompt_toolkit 加 rich，保持简单。
+- 每个模块都能单测。用 pytest，提供假 provider；测试里不要调用真实 API。
+
+## 架构
+
+- `agent/loop.py`：双层循环。内层处理工具调用和用户插队（steering），外层预留 follow-up 接口（v0 不实现）。事件：agent_start、turn_start、message_start、message_end、tool_execution_start、tool_execution_end、turn_end、agent_end。
+- 钩子：`transform_context`（调用模型前改写消息列表，不改会话原文）、`before_tool_call`（可阻止或改写参数）、`after_tool_call`（可覆盖结果）、`after_turn`（水位线检测、可替换上下文或停止）。
+- `agent/messages.py`：内部消息类型可扩展，进模型前才转成 LLM 消息，自定义类型不能泄漏进请求。必须保存并原样回传 `reasoning_content`。
+- `providers/`：基础接口 + `deepseek.py`。支持流式、工具调用，解析 usage（保留原始字段）。假 provider 在带 tools 的请求里若助手消息缺 `reasoning_content` 必须拒绝。
+- `scripts/probe_deepseek.py`：探测流式/非流式（含工具调用）原始响应，写出脱敏夹具。
+- `tools/`：read、write、edit（精确替换，匹配必须唯一，返回 diff）、bash、submit。bash 过长时只留头尾，全文落盘 `.agent/artifacts/` 并在结果里写路径。bash 默认超时 120 秒，可配置。
+- 请求构造必须确定：同一状态连续构造两次，前缀逐字节一致；工具按固定注册顺序发送。system prompt 不含时间戳或随机内容。
+- `executors/`：统一接口（运行命令、读文本、写文本）。LocalExecutor 和 DockerExecutor。工具只通过执行器访问文件系统和 shell。
+- `session.py`：`.agent/sessions/<id>.jsonl`（目录可配置），JSONL 只追加，每条有 id 和 parent_id。默认新建；`--continue` 才恢复最近一个。cli 不自动恢复。
+- `state.py`：`.agent/state.md`，订阅事件，自动记录机械事实。
+- `context.py`：水位线和重建上下文。
+- `telemetry.py`：每会话一份 JSONL。
+- `cli.py`：交互 TUI 和 headless。
+
+## 不变量
+
+1. 会话 JSONL 只追加，永不修改或删除已有条目。
+2. `finish_reason` 为 `length` 时，其中的工具调用一律不执行，返回错误让模型重发。
+3. 每个工具调用必有对应结果，按调用顺序写回。
+4. 每一次工具调用都由 harness 记进状态文件，不依赖模型自己记。
+5. 一批工具结果全部带终止标记时提前结束（submit 使用）。
+6. 出错、中断、崩溃都不能丢失已经写入的会话和状态。
+7. `reasoning_content` 在会话 JSONL 里逐字保留并原样回传。
+8. 请求构造是确定的，system prompt 不含时间戳或随机内容。
+
+## 工作方式
+
+- 每个里程碑开始前，先列出要新建的文件和要写的测试，等确认再动手。
+- 完成后汇报：改了什么、怎么跑测试、哪些没做、哪些地方不确定。
+- 里程碑细节在 `docs/milestones.md`，全文在 `PROMPT.md`。

@@ -1,0 +1,22 @@
+{
+  "model": "deepseek-flash",
+  "thinking": "enabled",
+  "cases": {
+    "nonstream_text": {
+      "http": 200
+    },
+    "stream_text": {
+      "http": 200,
+      "usage_only_chunks": 0,
+      "usage_on_content_chunks": 1
+    },
+    "nonstream_tools": {
+      "http": 200
+    },
+    "stream_tools": {
+      "http": 200,
+      "usage_only_chunks": 0,
+      "usage_on_content_chunks": 1
+    }
+  }
+}

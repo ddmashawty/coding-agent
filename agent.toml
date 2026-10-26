@@ -1,0 +1,17 @@
+# deepseek-flash is served by DeepSeek-V4.1-Flash-1017
+model = "deepseek-flash"
+base_url = "https://api.deepseek.com"
+context_window = 1000000
+soft_ratio = 0.5
+soft_abs = 60000
+hard_ratio = 0.7
+hard_abs = 90000
+keep_turns = 6
+consecutive_fail_record = 3
+consecutive_fail_escalate = 5
+thinking = "enabled"
+bash_timeout_seconds = 120
+max_steps = 100
+bash_truncate_head = 2000
+bash_truncate_tail = 2000
+session_dir = ".agent/sessions"
