@@ -86,6 +86,9 @@ class AgentLoop:
         self.session = session
         self.messages: list[Message] = []
         self._steering: list[str] = []
+        self.steps = 0
+        self.submitted = False
+        self.max_steps_hit = False
         if messages is None:
             prompt = SYSTEM_PROMPT
             if "submit" in tools.names():
@@ -112,19 +115,35 @@ class AgentLoop:
         if self.session is not None:
             self.session.append(message, api_key=self.config.api_key)
 
-    def run(self, user_text: str) -> str:
+    def run(self, user_text: str, *, start_payload: dict[str, Any] | None = None) -> str:
         self._add(UserMessage(user_text))
-        self.emit(EVENT_AGENT_START, {"task": user_text})
+        payload = {"task": user_text, **(start_payload or {})}
+        self.emit(EVENT_AGENT_START, payload)
+        error: BaseException | None = None
         final = ""
         try:
             final = self._inner()
+        except BaseException as exc:
+            error = exc
+            raise
         finally:
-            self.emit(EVENT_AGENT_END, {})
+            end_payload: dict[str, Any] = {
+                "submitted": self.submitted,
+                "max_steps_hit": self.max_steps_hit,
+                "steps": self.steps,
+            }
+            if error is not None:
+                redacted = redact_obj(str(error), self.config.api_key)
+                end_payload["error"] = redacted if isinstance(redacted, str) else str(error)
+            self.emit(EVENT_AGENT_END, end_payload)
         return final
 
     def _inner(self) -> str:
         final = ""
+        stopped_early = False
+        # max_steps is model-call rounds: one provider call per iteration.
         for step in range(self.config.max_steps):
+            self.steps = step + 1
             for steered in self._steering:
                 self._add(UserMessage(steered))
             self._steering.clear()
@@ -158,6 +177,7 @@ class AgentLoop:
                 final = TRUNCATED_NOTICE
                 after = self._after_turn()
                 if after.stop:
+                    stopped_early = True
                     break
                 continue
 
@@ -175,11 +195,11 @@ class AgentLoop:
             if not response.tool_calls:
                 after = self._after_turn()
                 self.emit(EVENT_TURN_END, {"step": step, "stop": True})
-                if after.stop:
-                    break
+                stopped_early = True
                 break
             stop_all = self._run_tools(response)
             if stop_all:
+                self.submitted = True
                 terminated = [
                     message
                     for message in self.messages
@@ -190,7 +210,10 @@ class AgentLoop:
             after = self._after_turn()
             self.emit(EVENT_TURN_END, {"step": step, "stop": stop_all or after.stop})
             if stop_all or after.stop:
+                stopped_early = True
                 break
+        if not stopped_early:
+            self.max_steps_hit = True
         return final
 
     def _call_model(

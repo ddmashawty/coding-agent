@@ -31,7 +31,19 @@ M3 才会做：headless 把会话放到 `--out` 目录，避免污染目标仓�
 
 ## M3：事件流、遥测、headless
 
-验收：在一个带 bug 的小仓库上，headless 修复并输出 `patch.diff` 和遥测。会话写到 `--out`，不写进目标仓库。
+验收：
+
+- 在一个带 bug 的小仓库上，`agent0 run --task ... --cwd ... --out ...` 修复并输出 `patch.diff`、`events.jsonl`、`telemetry.json`。会话写到 `--out/sessions/`，不写进目标仓库。
+- `telemetry.json` 在 finally 里写；内容可从 `events.jsonl` 重新算出（`compute_telemetry`）。含 `outcome`（`submitted` / `no_submit` / `max_steps` / `error`）和起点 commit。
+- 启动前必须是 git 仓库；默认工作区干净，`--allow-dirty` 才放行。cwd 不是 git 仓库：启动失败。
+- 退出码：0 成功（submit），1 崩溃，2 启动检查失败，3 超过 max_steps，4 没 submit 就停。交互 `agent0 --task` 并存：同一套 EventLog 和遥测写到该会话目录；模型正常说完退出 0。
+- `patch.diff` 含未跟踪新文件，且不改目标仓库 index：临时 `GIT_INDEX_FILE`，`read-tree HEAD`，`git add -A`（排除 `.agent/`），`git diff --cached HEAD`。
+- 启动时把 `.agent/` 追加进 `.git/info/exclude`（不改 index）。只写 artifacts 的运行后 `git status --porcelain` 为空。
+- `--no-rebuild` 可解析，M3 不实现重建。
+- `max_steps` 单位是模型调用轮数。
+- 软线/硬线按「越过一次算一次」计数。重复读同一文件：仅当两次读之间内容未变化才计数。重试已失败命令：仅当同一命令上次非 0 且两次之间没有成功的 write/edit 才计数。
+
+单测用假 provider。真实 DeepSeek 验收：对 `tests/fixtures/buggy_repo` 跑 headless。
 
 ## M4：状态文件、水位线、重建上下文
 

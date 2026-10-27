@@ -21,6 +21,7 @@ class Config:
     consecutive_fail_escalate: int
     thinking: str
     bash_timeout_seconds: int
+    # Model-call rounds (one provider call per step), not tool-call count.
     max_steps: int
     bash_truncate_head: int
     bash_truncate_tail: int
@@ -82,6 +83,7 @@ def load_config(path: Path | None = None, *, cwd: Path | None = None) -> Config:
         consecutive_fail_escalate=int(data.get("consecutive_fail_escalate", 5)),
         thinking=thinking,
         bash_timeout_seconds=int(data.get("bash_timeout_seconds", 120)),
+        # max_steps is model-call rounds, not tool calls.
         max_steps=int(data.get("max_steps", 100)),
         bash_truncate_head=int(data.get("bash_truncate_head", 2000)),
         bash_truncate_tail=int(data.get("bash_truncate_tail", 2000)),

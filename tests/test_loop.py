@@ -244,6 +244,38 @@ def test_fake_provider_rejects_missing_reasoning(config, executor, tools) -> Non
     raise AssertionError("expected MissingReasoningContent")
 
 
+def test_max_steps_counts_model_call_rounds(config, executor, tools) -> None:
+    from dataclasses import replace
+
+    cfg = replace(config, max_steps=2)
+    loop = _loop(
+        cfg,
+        executor,
+        tools,
+        [
+            ProviderResponse(
+                "",
+                "r1",
+                [ToolCallRequest("c1", "read", '{"path":"missing.txt"}')],
+                "tool_calls",
+            ),
+            ProviderResponse(
+                "",
+                "r2",
+                [ToolCallRequest("c2", "read", '{"path":"missing.txt"}')],
+                "tool_calls",
+            ),
+            ProviderResponse("should-not-run", "r3", [], "stop"),
+        ],
+    )
+    loop.run("go")
+    assert loop.steps == 2
+    assert loop.max_steps_hit is True
+    assert loop.submitted is False
+    assistants = [m for m in loop.messages if isinstance(m, AssistantMessage)]
+    assert len(assistants) == 2
+
+
 def test_after_turn_can_stop(config, executor, tools) -> None:
     loop = _loop(
         config,

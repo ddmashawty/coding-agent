@@ -23,6 +23,7 @@ packages = ["src/agent0"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = "--ignore=tests/fixtures"
 
 [dependency-groups]
 dev = [

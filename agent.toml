@@ -11,6 +11,7 @@ consecutive_fail_record = 3
 consecutive_fail_escalate = 5
 thinking = "enabled"
 bash_timeout_seconds = 120
+# Model-call rounds (one provider call per inner-loop iteration), not tool calls.
 max_steps = 100
 bash_truncate_head = 2000
 bash_truncate_tail = 2000
