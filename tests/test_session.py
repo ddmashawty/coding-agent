@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from agent0.agent.messages import (
@@ -75,6 +76,25 @@ def test_restore_unanswered_tool_calls_are_synthesized(tmp_path: Path, executor)
     # synthesized results were appended, not rewritten
     again = Session(session.path).load()
     assert sum(isinstance(m, ToolResultMessage) for m in again) == 2
+
+
+def test_continue_ignores_events_sidecar(tmp_path: Path) -> None:
+    session_dir = tmp_path / "sessions"
+    session = Session.create(session_dir, session_id="abc123")
+    session.append(UserMessage("hello"))
+    events = session_dir / "abc123.events.jsonl"
+    telemetry = session_dir / "abc123.telemetry.json"
+    events.write_text('{"event":"agent_start","ts":1,"payload":{}}\n', encoding="utf-8")
+    telemetry.write_text("{}\n", encoding="utf-8")
+    later = session.path.stat().st_mtime + 30
+    os.utime(events, (later, later))
+    os.utime(telemetry, (later + 1, later + 1))
+    assert Session.latest_path(session_dir) == session.path
+    opened = Session.open_latest(session_dir)
+    assert opened.path == session.path
+    loaded = opened.load()
+    assert [type(m).__name__ for m in loaded] == ["UserMessage"]
+    assert loaded[0].content == "hello"
 
 
 def test_truncated_last_line_is_ignored(tmp_path: Path) -> None:

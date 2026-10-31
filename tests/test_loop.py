@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 from agent0.agent.loop import TRUNCATED_NOTICE, AfterTurn, AgentLoop, BeforeTool, Hooks
-from agent0.agent.messages import AssistantMessage, InternalNote, ToolResultMessage, to_llm_messages
+from agent0.agent.messages import (
+    SUBMIT_HINT,
+    SYSTEM_PROMPT,
+    AssistantMessage,
+    InternalNote,
+    SystemMessage,
+    ToolResultMessage,
+    to_llm_messages,
+)
 from agent0.providers.base import MissingReasoningContent, ProviderResponse, ToolCallRequest
 from agent0.providers.fake import FakeProvider
 
@@ -15,6 +23,19 @@ def _loop(config, executor, tools, script, hooks=None, listeners=None) -> AgentL
         hooks=hooks,
         listeners=listeners or [],
     )
+
+
+def test_headless_system_prompt_requires_submit(config, executor) -> None:
+    from agent0.tools.registry import default_tools, headless_tools
+
+    interactive = _loop(config, executor, default_tools(config), [])
+    assert interactive.messages[0].content == SYSTEM_PROMPT
+    assert "submit" not in interactive.messages[0].content
+
+    headless = _loop(config, executor, headless_tools(config), [])
+    assert isinstance(headless.messages[0], SystemMessage)
+    assert headless.messages[0].content == SYSTEM_PROMPT + SUBMIT_HINT
+    assert "must call submit" in headless.messages[0].content
 
 
 def test_text_only_turn(config, executor, tools, tmp_path) -> None:

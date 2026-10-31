@@ -41,10 +41,15 @@ class Session:
         return cls(path)
 
     @classmethod
+    def is_session_file(cls, path: Path) -> bool:
+        """True for <id>.jsonl. Sidecar event logs are <id>.events.jsonl."""
+        return path.is_file() and path.suffix == ".jsonl" and not path.name.endswith(".events.jsonl")
+
+    @classmethod
     def latest_path(cls, directory: Path) -> Path | None:
         if not directory.is_dir():
             return None
-        files = [path for path in directory.glob("*.jsonl") if path.is_file()]
+        files = [path for path in directory.glob("*.jsonl") if cls.is_session_file(path)]
         if not files:
             return None
         return max(files, key=lambda path: path.stat().st_mtime)

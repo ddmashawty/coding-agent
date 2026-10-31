@@ -8,6 +8,7 @@ from typing import Any
 
 from agent0.agent.loop import EVENT_AGENT_END, AgentLoop
 from agent0.config import Config, load_config, resolve_session_dir
+from agent0.executors.base import Executor
 from agent0.executors.local import LocalExecutor
 from agent0.providers.base import Provider, StreamDelta
 from agent0.providers.deepseek import DeepSeekProvider
@@ -119,7 +120,7 @@ def _open_session(
 def execute(
     *,
     config: Config,
-    cwd: Path,
+    cwd: Path,  # host path; tools use executor, not this
     task: str,
     session: Session,
     events_path: Path,
@@ -128,6 +129,7 @@ def execute(
     tools,
     start_commit: str,
     headless: bool,
+    executor: Executor,
     patch_path: Path | None = None,
     messages=None,
     extra_listeners: list[Callable[[str, dict[str, Any]], None]] | None = None,
@@ -138,7 +140,7 @@ def execute(
     loop = AgentLoop(
         config=config,
         provider=provider,
-        executor=LocalExecutor(cwd),
+        executor=executor,
         tools=tools,
         listeners=listeners,
         on_delta=on_delta,
@@ -149,7 +151,7 @@ def execute(
     try:
         loop.run(task, start_payload=start_payload_for(config, start_commit=start_commit))
         if patch_path is not None:
-            write_patch(cwd, patch_path)
+            write_patch(executor, patch_path)
         snapshot = compute_telemetry(event_log.events, config=config)
         code = _exit_for(snapshot["outcome"], headless=headless)
     except Exception as exc:
@@ -176,8 +178,9 @@ def run_interactive(
     if provider is None and not config.api_key:
         print("DEEPSEEK_API_KEY is not set", file=sys.stderr)
         return EXIT_STARTUP
+    executor = LocalExecutor(cwd)
     try:
-        start_commit = prepare_workspace(cwd, allow_dirty=args.allow_dirty)
+        start_commit = prepare_workspace(executor, allow_dirty=args.allow_dirty)
     except StartupError as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_STARTUP
@@ -206,6 +209,7 @@ def run_interactive(
         tools=default_tools(config),
         start_commit=start_commit,
         headless=False,
+        executor=executor,
         messages=messages,
         extra_listeners=[_print_tool],
         on_delta=_print_delta,
@@ -224,8 +228,9 @@ def run_headless(
     if provider is None and not config.api_key:
         print("DEEPSEEK_API_KEY is not set", file=sys.stderr)
         return EXIT_STARTUP
+    executor = LocalExecutor(cwd)
     try:
-        start_commit = prepare_workspace(cwd, allow_dirty=args.allow_dirty)
+        start_commit = prepare_workspace(executor, allow_dirty=args.allow_dirty)
     except StartupError as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_STARTUP
@@ -243,6 +248,7 @@ def run_headless(
         tools=headless_tools(config),
         start_commit=start_commit,
         headless=True,
+        executor=executor,
         patch_path=out / "patch.diff",
         messages=messages,
         extra_listeners=[_print_tool],

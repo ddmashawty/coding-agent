@@ -1,6 +1,7 @@
 import json
 
 from agent0.agent.messages import (
+    SUBMIT_HINT,
     SYSTEM_PROMPT,
     AssistantMessage,
     SystemMessage,
@@ -71,3 +72,5 @@ def test_headless_tool_order(config) -> None:
 def test_system_prompt_is_deterministic() -> None:
     assert SYSTEM_PROMPT == SYSTEM_PROMPT
     assert "{" not in SYSTEM_PROMPT
+    assert "{" not in SUBMIT_HINT
+    assert "must call submit" in SUBMIT_HINT

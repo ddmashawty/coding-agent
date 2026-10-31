@@ -1,104 +1,110 @@
-"""Git workspace checks and patch.diff. Never touches the real index."""
+"""Git workspace checks and patch.diff. All git goes through the executor."""
 
 from __future__ import annotations
 
-import os
-import subprocess
-import tempfile
+import shlex
 from pathlib import Path
+
+from agent0.executors.base import CommandResult, Executor
+
+PATCH_INDEX = "/tmp/agent0-patch-index"
 
 
 class StartupError(Exception):
     """Workspace is not ready. CLI maps this to exit code 2."""
 
 
-def _git_env(extra: dict[str, str] | None = None) -> dict[str, str]:
-    env = os.environ.copy()
-    env.pop("DEEPSEEK_API_KEY", None)
-    if extra:
-        env.update(extra)
-    return env
+def run_git(
+    executor: Executor,
+    *args: str,
+    extra_env: dict[str, str] | None = None,
+    timeout: float = 60,
+) -> CommandResult:
+    parts: list[str] = []
+    if extra_env:
+        for key, value in extra_env.items():
+            parts.append(f"{key}={shlex.quote(value)}")
+    parts.append("git")
+    parts.extend(shlex.quote(arg) for arg in args)
+    return executor.run(" ".join(parts), timeout=timeout)
 
 
-def git(cwd: Path, *args: str, extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-C", str(cwd), *args],
-        capture_output=True,
-        text=True,
-        env=_git_env(extra_env),
-    )
+def is_git_worktree(executor: Executor) -> bool:
+    result = run_git(executor, "rev-parse", "--is-inside-work-tree")
+    return result.exit_code == 0 and result.stdout.strip() == "true"
 
 
-def is_git_worktree(cwd: Path) -> bool:
-    result = git(cwd, "rev-parse", "--is-inside-work-tree")
-    return result.returncode == 0 and result.stdout.strip() == "true"
-
-
-def head_commit(cwd: Path) -> str:
-    result = git(cwd, "rev-parse", "HEAD")
-    if result.returncode != 0:
-        raise StartupError("workspace has no HEAD commit")
+def head_commit(executor: Executor) -> str:
+    result = run_git(executor, "rev-parse", "HEAD")
+    if result.exit_code != 0:
+        raise StartupError(result.stderr.strip() or "workspace has no HEAD commit")
     return result.stdout.strip()
 
 
-def git_dir(cwd: Path) -> Path:
-    result = git(cwd, "rev-parse", "--git-dir")
-    if result.returncode != 0:
-        raise StartupError(f"not a git repository: {cwd}")
-    path = Path(result.stdout.strip())
-    if not path.is_absolute():
-        path = cwd / path
-    return path.resolve()
+def git_dir(executor: Executor) -> str:
+    result = run_git(executor, "rev-parse", "--git-dir")
+    if result.exit_code != 0:
+        raise StartupError(result.stderr.strip() or "not a git repository")
+    return result.stdout.strip()
 
 
-def ensure_agent_excluded(cwd: Path) -> None:
+def ensure_agent_excluded(executor: Executor) -> None:
     """Append .agent/ to .git/info/exclude. Does not change the index."""
-    exclude = git_dir(cwd) / "info" / "exclude"
-    exclude.parent.mkdir(parents=True, exist_ok=True)
-    existing = exclude.read_text(encoding="utf-8") if exclude.is_file() else ""
+    exclude_path = str(Path(git_dir(executor)) / "info" / "exclude")
+    try:
+        existing = executor.read_text(exclude_path)
+    except FileNotFoundError:
+        existing = ""
     markers = {line.strip() for line in existing.splitlines()}
     if ".agent/" in markers or ".agent" in markers:
         return
     prefix = "" if not existing or existing.endswith("\n") else "\n"
-    with exclude.open("a", encoding="utf-8") as handle:
-        handle.write(f"{prefix}.agent/\n")
+    executor.write_text(exclude_path, f"{existing}{prefix}.agent/\n")
 
 
-def is_dirty(cwd: Path) -> bool:
-    result = git(cwd, "status", "--porcelain")
-    if result.returncode != 0:
+def is_dirty(executor: Executor) -> bool:
+    result = run_git(executor, "status", "--porcelain")
+    if result.exit_code != 0:
         raise StartupError(result.stderr.strip() or "git status failed")
     return bool(result.stdout.strip())
 
 
-def prepare_workspace(cwd: Path, *, allow_dirty: bool) -> str:
-    if not is_git_worktree(cwd):
-        raise StartupError(f"not a git repository: {cwd}")
-    ensure_agent_excluded(cwd)
-    commit = head_commit(cwd)
-    if not allow_dirty and is_dirty(cwd):
+def prepare_workspace(executor: Executor, *, allow_dirty: bool) -> str:
+    if not is_git_worktree(executor):
+        raise StartupError("not a git repository")
+    ensure_agent_excluded(executor)
+    commit = head_commit(executor)
+    if not allow_dirty and is_dirty(executor):
         raise StartupError("working tree is dirty; pass --allow-dirty to proceed")
     return commit
 
 
-def write_patch(cwd: Path, dest: Path) -> str:
-    """Diff vs HEAD including untracked files, without modifying the real index."""
+def write_patch(executor: Executor, dest: Path) -> str:
+    """Diff vs HEAD including untracked files, without modifying the real index.
+
+    The temp index lives in the executor filesystem (container or host).
+    dest is on the host.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
-    ensure_agent_excluded(cwd)
-    with tempfile.TemporaryDirectory(prefix="agent0-index-") as tmp:
-        index = Path(tmp) / "index"
-        extra = {"GIT_INDEX_FILE": str(index.resolve())}
-        read = git(cwd, "read-tree", "HEAD", extra_env=extra)
-        if read.returncode != 0:
-            raise RuntimeError(read.stderr.strip() or "git read-tree failed")
-        # Rely on .git/info/exclude for .agent/. Do not pass .agent as a
-        # pathspec: naming an ignored path makes git add exit 1.
-        added = git(cwd, "-c", "advice.addIgnoredFile=false", "add", "-A", extra_env=extra)
-        if added.returncode != 0:
-            raise RuntimeError(added.stderr.strip() or "git add failed")
-        diff = git(cwd, "diff", "--cached", "HEAD", extra_env=extra)
-        if diff.returncode != 0:
-            raise RuntimeError(diff.stderr.strip() or "git diff --cached failed")
-        text = diff.stdout
+    ensure_agent_excluded(executor)
+    extra = {"GIT_INDEX_FILE": PATCH_INDEX}
+    executor.run(f"rm -f {shlex.quote(PATCH_INDEX)}", timeout=30)
+    read = run_git(executor, "read-tree", "HEAD", extra_env=extra)
+    if read.exit_code != 0:
+        raise RuntimeError(read.stderr.strip() or "git read-tree failed")
+    added = run_git(
+        executor,
+        "-c",
+        "advice.addIgnoredFile=false",
+        "add",
+        "-A",
+        extra_env=extra,
+    )
+    if added.exit_code != 0:
+        raise RuntimeError(added.stderr.strip() or "git add failed")
+    diff = run_git(executor, "diff", "--cached", "HEAD", extra_env=extra)
+    if diff.exit_code != 0:
+        raise RuntimeError(diff.stderr.strip() or "git diff --cached failed")
+    text = diff.stdout
     dest.write_text(text, encoding="utf-8")
     return text

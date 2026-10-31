@@ -29,3 +29,6 @@ addopts = "--ignore=tests/fixtures"
 dev = [
     "pytest>=8.0",
 ]
+swebench = [
+    "swebench==4.1.0",
+]

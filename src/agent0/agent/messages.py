@@ -10,7 +10,10 @@ Available tools: read (UTF-8 file), write (create or overwrite a UTF-8 file), ed
 If a tool fails, read the error and try another approach. Prefer facts from tools over guesses.
 """
 
-SUBMIT_HINT = "When the task is complete, call submit.\n"
+SUBMIT_HINT = (
+    "submit is available. You must call submit when the task is finished; "
+    "the run does not end until you do.\n"
+)
 
 INTERRUPTED_TOOL = "会话在执行前中断，工具未执行"
 

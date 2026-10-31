@@ -1,7 +1,11 @@
 .agent/
 runs/
+logs/
 .venv/
+.cache/
+data/cache/
 .env
+deepseek-flash.*.json
 __pycache__/
 .pytest_cache/
 *.pyc
